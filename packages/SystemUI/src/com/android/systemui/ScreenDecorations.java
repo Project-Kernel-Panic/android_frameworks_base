@@ -172,6 +172,7 @@ public class ScreenDecorations implements
     private WindowManager mWindowManager;
     private int mRotation;
     private UserSettingObserver mColorInversionSetting;
+    private UserSettingObserver mCameraRingSetting;
     private DelayableExecutor mExecutor;
     private Handler mHandler;
     boolean mPendingConfigChange;
@@ -727,6 +728,16 @@ public class ScreenDecorations implements
                         updateColorInversion(value);
                     }
                 };
+                if (mCameraRingSetting == null) {
+                    mCameraRingSetting = new UserSettingObserver(mSecureSettings, mHandler,
+                            "camera_ring_enabled", mUserTracker.getUserId()) {
+                        @Override
+                        protected void handleValueChanged(int value, boolean observedChange) {
+                            setupCameraListener();
+                        }
+                    };
+                    mCameraRingSetting.setListening(true);
+                }
             }
             mColorInversionSetting.setListening(true);
             mColorInversionSetting.onChange(false);
@@ -1026,13 +1037,21 @@ public class ScreenDecorations implements
     private void setupCameraListener() {
         // TODO(b/238143614) Support dual screen camera protection
         Resources res = mContext.getResources();
-        boolean enabled = res.getBoolean(R.bool.config_enableDisplayCutoutProtection);
-        if (enabled) {
+        boolean configEnabled = res.getBoolean(R.bool.config_enableDisplayCutoutProtection);
+        boolean userEnabled = mSecureSettings.getIntForUser(
+                "camera_ring_enabled", 0, mUserTracker.getUserId()) == 1;
+        boolean enabled = configEnabled && userEnabled;
+        if (enabled && mCameraListener == null) {
             mCameraListener =
                     CameraAvailabilityListener.Factory.build(
                             mContext, mExecutor, mCameraProtectionLoader);
             mCameraListener.addTransitionCallback(mCameraTransitionCallback);
             mCameraListener.startListening();
+        } else if (!enabled && mCameraListener != null) {
+            mCameraListener.removeTransitionCallback(mCameraTransitionCallback);
+            mCameraListener.stop();
+            mCameraListener = null;
+            hideCameraProtection();
         }
     }
 
@@ -1044,6 +1063,10 @@ public class ScreenDecorations implements
                     // update color inversion setting to the new user
                     mColorInversionSetting.setUserId(newUser);
                     updateColorInversion(mColorInversionSetting.getValue());
+                    if (mCameraRingSetting != null) {
+                        mCameraRingSetting.setUserId(newUser);
+                        setupCameraListener();
+                    }
                 }
             };
 
@@ -1135,6 +1158,7 @@ public class ScreenDecorations implements
                     ((DisplayCutoutView) view).updateCutout();
                 }
             }
+            setupCameraListener();
             if (mOverlays != null) {
                 // Updating the layout params ensures that ViewRootImpl will call relayoutWindow(),
                 // which ensures that the forced seamless rotation will end, even if we updated
