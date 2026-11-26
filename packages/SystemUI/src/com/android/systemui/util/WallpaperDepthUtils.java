@@ -52,6 +52,7 @@ import android.widget.FrameLayout;
 
 import com.android.systemui.Dependency;
 import com.android.systemui.broadcast.BroadcastDispatcher;
+import com.android.systemui.keyguard.ui.view.KeyguardRootView;
 import com.android.systemui.media.MediaViewController;
 import com.android.systemui.res.R;
 import com.android.systemui.settings.UserTracker;
@@ -83,6 +84,9 @@ public class WallpaperDepthUtils {
     private static WallpaperDepthUtils instance;
     private FrameLayout mLockScreenBackground;
     private FrameLayout mLockScreenSubject;
+    private final FrameLayout mSubjectContainer;
+    private KeyguardRootView mKeyguardRoot;
+    private FrameLayout mKeyguardSubjectContainer;
 
     private final Context mContext;
     private final ScrimController mScrimController;
@@ -154,7 +158,7 @@ public class WallpaperDepthUtils {
                 View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         mLockScreenBackground.setVisibility(View.GONE);
 
-        mLockScreenSubject = new FrameLayout(mContext) {
+        mSubjectContainer = new FrameLayout(mContext) {
             @Override
             protected void onAttachedToWindow() {
                 super.onAttachedToWindow();
@@ -171,7 +175,6 @@ public class WallpaperDepthUtils {
             @Override
             protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
                 super.onLayout(changed, left, top, right, bottom);
-                applyWallpaperZoom();
                 ViewGroup parent = (ViewGroup) getParent();
                 if (parent != null && mLockScreenBackground.getParent() == null) {
                     parent.addView(mLockScreenBackground, 0);
@@ -206,8 +209,19 @@ public class WallpaperDepthUtils {
             }
         };
 
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-1, -1);
-        mLockScreenSubject.setLayoutParams(lp);
+        mSubjectContainer.setClipChildren(false);
+        mSubjectContainer.setClipToPadding(false);
+        mSubjectContainer.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        mLockScreenSubject = new FrameLayout(mContext) {
+            @Override
+            protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+                super.onLayout(changed, left, top, right, bottom);
+                applyWallpaperZoom();
+            }
+        };
+        mSubjectContainer.addView(mLockScreenSubject, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         mLockScreenSubject.setClickable(false);
         mLockScreenSubject.setFocusable(false);
         mLockScreenSubject.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -491,17 +505,44 @@ public class WallpaperDepthUtils {
     }
 
     public FrameLayout getDepthWallpaperView() {
-        return mLockScreenSubject;
+        return mSubjectContainer;
+    }
+
+    public void setKeyguardRoot(KeyguardRootView root) {
+        mKeyguardRoot = root;
+        mKeyguardSubjectContainer = root.findViewById(R.id.keyguard_depth_wallpaper_subject);
+    }
+
+    public void setSubjectBehindShade(boolean behindShade) {
+        float translationZ = behindShade ? -100f : 0f;
+        if (mSubjectContainer.getTranslationZ() != translationZ) {
+            mSubjectContainer.setTranslationZ(translationZ);
+            mSubjectContainer.post(() -> placeSubject(
+                    mLockScreenSubject.getVisibility() == View.VISIBLE && canShowDepthWallpaper()));
+        }
+    }
+
+    private void placeSubject(boolean showDepth) {
+        boolean inKeyguard = showDepth && mKeyguardSubjectContainer != null
+                && mSubjectContainer.getTranslationZ() == 0f;
+        FrameLayout target = inKeyguard ? mKeyguardSubjectContainer : mSubjectContainer;
+        if (mLockScreenSubject.getParent() != target) {
+            ((ViewGroup) mLockScreenSubject.getParent()).removeView(mLockScreenSubject);
+            target.addView(mLockScreenSubject);
+        }
+        if (mKeyguardRoot != null) {
+            mKeyguardRoot.setDepthWallpaperOverClock(inKeyguard);
+        }
     }
 
     private void updateWallpaperZoomListener() {
-        if (!isDWallpaperEnabled() || !mLockScreenSubject.isAttachedToWindow()) {
+        if (!isDWallpaperEnabled() || !mSubjectContainer.isAttachedToWindow()) {
             unregisterWallpaperZoomListener();
             updateDepthWallpaperVisibility();
             return;
         }
         if (mWallpaperZoomListener != null) return;
-        mWallpaperZoomDisplayId = mLockScreenSubject.getDisplay().getDisplayId();
+        mWallpaperZoomDisplayId = mSubjectContainer.getDisplay().getDisplayId();
         mWallpaperZoomListener = new IWallpaperZoomListener.Stub() {
             @Override
             public void onWallpaperZoomChanged(float scale, float pivotX, float pivotY) {
@@ -597,13 +638,14 @@ public class WallpaperDepthUtils {
             return;
         }
 
-        mLockScreenSubject.post(() -> {
-            ViewGroup parent = (ViewGroup) mLockScreenSubject.getParent();
+        mSubjectContainer.post(() -> {
+            ViewGroup parent = (ViewGroup) mSubjectContainer.getParent();
             if (parent != null && mLockScreenBackground.getParent() == null) {
                 parent.addView(mLockScreenBackground, 0);
             }
             boolean showDepth = canShowDepthWallpaper();
             boolean showAmbient = canShowAmbientWallpaper();
+            placeSubject(showDepth);
             if (mShowingAmbientWallpaper != showAmbient) {
                 if (showAmbient) {
                     mLockScreenSubject.setAlpha(1f);
@@ -639,6 +681,7 @@ public class WallpaperDepthUtils {
 
         mLockScreenSubject.post(() -> {
             mLockScreenSubject.setVisibility(View.GONE);
+            placeSubject(false);
 
             if (mLockScreenBackground != null) {
                 mLockScreenBackground.setVisibility(View.GONE);
@@ -665,6 +708,7 @@ public class WallpaperDepthUtils {
                     .setDuration(120)
                     .withEndAction(() -> {
                         mLockScreenSubject.setVisibility(View.GONE);
+                        placeSubject(false);
                         mLockScreenSubject.setAlpha(1f);
 
                         if (mLockScreenBackground != null) {
@@ -769,6 +813,9 @@ public class WallpaperDepthUtils {
         mLoadedSubjectPath = null;
         mLockScreenSubject.animate().cancel();
         mLockScreenSubject.setVisibility(View.GONE);
+        if (mKeyguardRoot != null) {
+            mKeyguardRoot.setDepthWallpaperOverClock(false);
+        }
         mLockScreenSubject.setAlpha(1f);
         mLockScreenSubject.setBackground(null);
         mLockScreenSubject.setRenderEffect(null);

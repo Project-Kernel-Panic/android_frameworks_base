@@ -251,9 +251,9 @@ class ScrimUtils private constructor(context: Context?) {
         if (mQsVisible.getAndSet(visible) != visible) {
             listeners.notifyOnMain { it.onQsVisibilityChanged(visible) }
             if (visible) {
-                mWallpaperDepthUtils?.getDepthWallpaperView()?.translationZ = -100f
+                mWallpaperDepthUtils?.setSubjectBehindShade(true)
             } else if (mStateIsKeyguard) {
-                mWallpaperDepthUtils?.getDepthWallpaperView()?.translationZ = 0f
+                mWallpaperDepthUtils?.setSubjectBehindShade(false)
                 mainHandler.postDelayed({
                     mWallpaperDepthUtils?.updateDepthWallpaper()
                     mWallpaperDepthUtils?.updateDepthWallpaperVisibility()
@@ -372,13 +372,13 @@ class ScrimUtils private constructor(context: Context?) {
     fun setQsExpansion(expansion: Float) {
         val fullyCollapsed = expansion <= 0f
         if (fullyCollapsed) {
-            mWallpaperDepthUtils?.getDepthWallpaperView()?.translationZ = 0f
+            mWallpaperDepthUtils?.setSubjectBehindShade(false)
             if (mStateIsKeyguard) {
                 mWallpaperDepthUtils?.updateDepthWallpaper()
                 mWallpaperDepthUtils?.updateDepthWallpaperVisibility()
             }
         } else {
-            mWallpaperDepthUtils?.getDepthWallpaperView()?.translationZ = -100f
+            mWallpaperDepthUtils?.setSubjectBehindShade(true)
         }
     }
 
