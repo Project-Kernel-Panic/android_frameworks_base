@@ -321,7 +321,7 @@ public class SharedConnectivityManager {
             synchronized (mProxyDataLock) {
                 mProxyMap.put(callback, proxy);
             }
-        } catch (RemoteException e) {
+        } catch (RemoteException | IllegalStateException e) {
             Log.e(TAG, "Exception in registerCallback", e);
             callback.onRegisterCallbackFailed(e);
         }
