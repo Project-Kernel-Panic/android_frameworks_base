@@ -54,6 +54,11 @@ import com.android.systemui.statusbar.pipeline.mobile.domain.interactor.MobileIc
 import com.android.systemui.statusbar.pipeline.mobile.ui.viewmodel.MobileIconsViewModel
 import com.android.systemui.statusbar.pipeline.mobile.ui.viewmodel.MobileIconsViewModelKairos
 import com.android.systemui.statusbar.systemstatusicons.ui.viewmodel.SystemStatusIconsViewModel
+import com.android.systemui.statusbar.policy.LunarDateHelper
+import com.android.systemui.util.settings.SettingsProxyExt.observerFlow
+import com.android.systemui.util.settings.SystemSettings
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.onStart
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -84,6 +89,7 @@ constructor(
     val mobileIconsViewModelKairos: dagger.Lazy<MobileIconsViewModelKairos>,
     private val dualShadeEducationInteractor: DualShadeEducationInteractor,
     private val desktopInteractor: DesktopInteractor,
+    private val systemSettings: SystemSettings,
 ) : ExclusiveActivatable() {
 
     private val hydrator = Hydrator("ShadeHeaderViewModel.hydrator")
@@ -155,15 +161,24 @@ constructor(
         get() =
             dualShadeEducationInteractor.education == DualShadeEducationModel.ForQuickSettingsShade
 
+    private val lunarDateEnabledFlow =
+        systemSettings
+            .observerFlow(LunarDateHelper.SETTING_KEY)
+            .onStart { emit(Unit) }
+            .map { systemSettings.getInt(LunarDateHelper.SETTING_KEY, 0) == 1 }
+            .distinctUntilChanged()
+
     val longerDateText: String by
         hydrator.hydratedStateOf(
             traceName = "longerDateText",
             initialValue = "",
             source =
-                combine(clockInteractor.longerDateFormat, clockInteractor.currentTime) {
-                    format,
-                    time ->
-                    format.format(time)
+                combine(
+                    clockInteractor.longerDateFormat,
+                    clockInteractor.currentTime,
+                    lunarDateEnabledFlow,
+                ) { format, time, lunarEnabled ->
+                    LunarDateHelper.appendLunarDate(format.format(time), time, lunarEnabled)
                 },
         )
 
@@ -172,10 +187,12 @@ constructor(
             traceName = "shorterDateText",
             initialValue = "",
             source =
-                combine(clockInteractor.shorterDateFormat, clockInteractor.currentTime) {
-                    format,
-                    time ->
-                    format.format(time)
+                combine(
+                    clockInteractor.shorterDateFormat,
+                    clockInteractor.currentTime,
+                    lunarDateEnabledFlow,
+                ) { format, time, lunarEnabled ->
+                    LunarDateHelper.appendLunarDate(format.format(time), time, lunarEnabled)
                 },
         )
 

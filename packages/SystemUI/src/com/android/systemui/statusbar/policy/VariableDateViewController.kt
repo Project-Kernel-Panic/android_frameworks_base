@@ -20,6 +20,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.database.ContentObserver
+import android.provider.Settings
 import android.icu.text.DateFormat
 import android.icu.text.DisplayContext
 import android.icu.util.Calendar
@@ -106,6 +108,21 @@ class VariableDateViewController(
     private var lastWidth = Integer.MAX_VALUE
     private var lastText = ""
     private var currentTime = Date()
+    private var lunarEnabled = false
+
+    private val lunarObserver = object : ContentObserver(timeTickHandler) {
+        override fun onChange(selfChange: Boolean) {
+            lunarEnabled = isLunarDateEnabled()
+            post(::updateClock)
+        }
+    }
+
+    private fun isLunarDateEnabled(): Boolean = Settings.System.getIntForUser(
+        mView.context.contentResolver,
+        LunarDateHelper.SETTING_KEY,
+        0,
+        UserHandle.USER_CURRENT,
+    ) == 1
 
     // View class easy accessors
     private val longerPattern: String
@@ -182,6 +199,13 @@ class VariableDateViewController(
                 shadeInteractor.qsExpansion.collect(::onQsExpansionFractionChanged)
             }
         }
+        lunarEnabled = isLunarDateEnabled()
+        mView.context.contentResolver.registerContentObserver(
+            Settings.System.getUriFor(LunarDateHelper.SETTING_KEY),
+            false,
+            lunarObserver,
+            UserHandle.USER_ALL,
+        )
         post(::updateClock)
         mView.onAttach(onMeasureListener)
     }
@@ -190,6 +214,7 @@ class VariableDateViewController(
         dateFormat = null
         mView.onAttach(null)
         broadcastDispatcher.unregisterReceiver(intentReceiver)
+        mView.context.contentResolver.unregisterContentObserver(lunarObserver)
     }
 
     private fun updateClock() {
@@ -199,7 +224,7 @@ class VariableDateViewController(
 
         currentTime.time = systemClock.currentTimeMillis()
 
-        val text = getTextForFormat(currentTime, dateFormat!!)
+        val text = LunarDateHelper.appendLunarDate(getTextForFormat(currentTime, dateFormat!!), currentTime, lunarEnabled)
         if (text != lastText) {
             mView.setText(text)
             lastText = text
@@ -216,14 +241,14 @@ class VariableDateViewController(
         }
         if (DEBUG) Log.d(TAG, "Width changed. Maybe changing pattern")
         // Start with longer pattern and see what fits
-        var text = getTextForFormat(currentTime, getFormatFromPattern(longerPattern))
+        var text = LunarDateHelper.appendLunarDate(getTextForFormat(currentTime, getFormatFromPattern(longerPattern)), currentTime, lunarEnabled)
         var length = mView.getDesiredWidthForText(text)
         if (length <= availableWidth) {
             changePattern(longerPattern)
             return
         }
 
-        text = getTextForFormat(currentTime, getFormatFromPattern(shorterPattern))
+        text = LunarDateHelper.appendLunarDate(getTextForFormat(currentTime, getFormatFromPattern(shorterPattern)), currentTime, lunarEnabled)
         length = mView.getDesiredWidthForText(text)
         if (length <= availableWidth) {
             changePattern(shorterPattern)
