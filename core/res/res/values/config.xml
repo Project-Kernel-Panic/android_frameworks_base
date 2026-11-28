@@ -29,6 +29,7 @@
     <string-array name="config_statusBarIcons">
         <item><xliff:g id="id">@string/status_bar_no_calling</xliff:g></item>
         <item><xliff:g id="id">@string/status_bar_call_strength</xliff:g></item>
+        <item>firewall</item>
         <item><xliff:g id="id">@string/status_bar_alarm_clock</xliff:g></item>
         <item><xliff:g id="id">@string/status_bar_rotate</xliff:g></item>
         <item><xliff:g id="id">@string/status_bar_headset</xliff:g></item>
@@ -74,6 +75,7 @@
     <string-array name="config_statusBarIconsLegacy">
         <item><xliff:g id="id">@string/status_bar_no_calling</xliff:g></item>
         <item><xliff:g id="id">@string/status_bar_call_strength</xliff:g></item>
+        <item>firewall</item>
         <item><xliff:g id="id">@string/status_bar_alarm_clock</xliff:g></item>
         <item><xliff:g id="id">@string/status_bar_rotate</xliff:g></item>
         <item><xliff:g id="id">@string/status_bar_headset</xliff:g></item>
